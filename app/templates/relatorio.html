@@ -1,0 +1,116 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row =>
+                    row.some(cell => cell !== '' && cell !== null && cell !== undefined)
+                );
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Relatório Financeiro - Finanças99</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            color: #333;
+        }
+        h1, h2 {
+            color: #1E2A44;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+        th {
+            background-color: #2D3B55;
+            color: white;
+        }
+        .total-row {
+            font-weight: bold;
+            background-color: #f9fafb;
+        }
+    </style>
+</head>
+<body>
+    <h1>Relatório Financeiro - Finanças99</h1>
+    <h2>Resumo Financeiro</h2>
+    <p><strong>Entradas Totais:</strong> R$ {{ total_receitas.values()|sum }}</p>
+    <p><strong>Saídas Totais:</strong> R$ {{ total_despesas.values()|sum }}</p>
+    <p><strong>Total Livre:</strong> R$ {{ total_receitas.values()|sum - total_despesas.values()|sum }}</p>
+
+    <h2>Transações por Mês</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Categoria</th>
+                {% for mes in meses %}
+                    <th>{{ mes }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for categoria in categorias %}
+            <tr>
+                <td>{{ categoria }}</td>
+                {% for mes in meses %}
+                    <td>
+                        {% for transacao in transacoes if transacao.categoria == categoria and transacao.mes == mes %}
+                            R$ {{ transacao.valor }}
+                        {% else %}
+                             
+                        {% endfor %}
+                    </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+            <tr class="total-row">
+                <td>Total Despesas</td>
+                {% for mes in meses %}
+                    <td>R$ {{ total_despesas[mes] }}</td>
+                {% endfor %}
+            </tr>
+            <tr class="total-row">
+                <td>Total Receitas</td>
+                {% for mes in meses %}
+                    <td>R$ {{ total_receitas[mes] }}</td>
+                {% endfor %}
+            </tr>
+            <tr class="total-row">
+                <td>Total Livre</td>
+                {% for mes in meses %}
+                    <td>R$ {{ total_livre[mes] }}</td>
+                {% endfor %}
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>

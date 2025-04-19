@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Finanças99</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-color: #ffffff;
+            --text-color: #333333;
+            --card-bg: #f8f9fa;
+            --border-color: #dee2e6;
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a1a;
+            --text-color: #ffffff;
+            --card-bg: #2d2d2d;
+            --border-color: #404040;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 1000;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 20px;
+        }
+
+        .chart-tooltip {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            border-radius: 5px;
+            position: absolute;
+            display: none;
+            z-index: 100;
+        }
+    </style>
+</head>
+<body>
+    <!-- Botão de alternância de tema -->
+    <button class="theme-toggle" id="themeToggle" title="Alternar tema">
+        <i class="fas fa-moon"></i>
+    </button>
+
+    <!-- Botão do menu mobile -->
+    <button class="menu-toggle" id="menuToggle" title="Abrir menu">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- Overlay do menu -->
+    <div class="menu-overlay" id="menuOverlay"></div>
+
+    <header class="header">
+        <div class="header-content">
+            <h1><i class="fas fa-wallet"></i> Finanças99</h1>
+            <nav class="main-nav" id="mainNav">
+                <ul>
+                    <li><a href="{{ url_for('dashboard') }}" class="nav-link active"><i class="fas fa-home"></i> Dashboard</a></li>
+                    <li><a href="{{ url_for('adicionar_transacao') }}" class="nav-link"><i class="fas fa-plus-circle"></i> Adicionar Transação</a></li>
+                    <li><a href="{{ url_for('gerenciar_categorias') }}" class="nav-link"><i class="fas fa-tags"></i> Gerenciar Categorias</a></li>
+                    <li><a href="{{ url_for('lembretes') }}" class="nav-link"><i class="fas fa-bell"></i> Lembretes</a></li>
+                    <li><a href="{{ url_for('metas') }}" class="nav-link"><i class="fas fa-bullseye"></i> Metas</a></li>
+                    <li><a href="{{ url_for('perfil') }}" class="nav-link"><i class="fas fa-user"></i> Perfil</a></li>
+                    <li><a href="{{ url_for('logout') }}" class="nav-link"><i class="fas fa-sign-out-alt"></i> Sair</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    <div class="container">
+        <h2><i class="fas fa-user"></i> Olá, {{ current_user.nome }}</h2>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <p class="flash-message {{ category }}">{{ message }}</p>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <!-- Filtros -->
+        <div class="card">
+            <h3>Filtros</h3>
+            <form method="POST" class="form-grid">
+                <div class="input-group">
+                    <i class="fas fa-calendar"></i>
+                    <input type="number" name="ano" value="{{ ano_filtro }}" placeholder="Ano">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-list"></i>
+                    <select name="tipo">
+                        <option value="todos" {% if tipo_filtro == 'todos' %}selected{% endif %}>Todos</option>
+                        <option value="despesa" {% if tipo_filtro == 'despesa' %}selected{% endif %}>Despesa</option>
+                        <option value="receita" {% if tipo_filtro == 'receita' %}selected{% endif %}>Receita</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filtrar</button>
+            </form>
+        </div>
+
+        <!-- Resumo Financeiro -->
+        <div class="card">
+            <h3>Resumo Financeiro</h3>
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <h4>Entradas</h4>
+                    <p class="positive valor-financeiro">{{ total_receitas.values()|sum|round(2) }}</p>
+                </div>
+                <div class="summary-item">
+                    <h4>Saídas</h4>
+                    <p class="negative valor-financeiro">{{ total_despesas.values()|sum|round(2) }}</p>
+                </div>
+                <div class="summary-item">
+                    <h4>Total Livre</h4>
+                    <p class="{% if (total_receitas.values()|sum - total_despesas.values()|sum) >= 0 %}positive{% else %}negative{% endif %} valor-financeiro">
+                        {{ (total_receitas.values()|sum - total_despesas.values()|sum)|round(2) }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Gráfico de Fluxo de Caixa -->
+        <div class="card">
+            <h3>Fluxo de Caixa</h3>
+            <canvas id="fluxoCaixaChart"></canvas>
+        </div>
+
+        <!-- Gráfico de Entradas vs. Saídas -->
+        <div class="card">
+            <h3>Entradas vs. Saídas</h3>
+            <canvas id="entradasSaidasChart"></canvas>
+        </div>
+
+        <!-- Gráfico de Gastos por Categoria -->
+        <div class="card">
+            <h3>Gastos por Categoria</h3>
+            <canvas id="gastosCategoriaChart" class="grafico-pizza"></canvas>
+        </div>
+
+        <!-- Tabela de Transações -->
+        <div class="card">
+            <h3>Suas Transações</h3>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Categoria</th>
+                            {% for mes in meses %}
+                                <th>{{ mes }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for categoria in categorias %}
+                        <tr>
+                            <td>{{ categoria }}</td>
+                            {% for mes in meses %}
+                                <td>
+                                    {% set transacoes_mes = transacoes|selectattr('categoria', 'equalto', categoria)|selectattr('mes', 'equalto', mes)|list %}
+                                    {% if transacoes_mes %}
+                                        {% for transacao in transacoes_mes %}
+                                            {% if transacao.valor > 0 %}
+                                                <span class="valor-financeiro">{{ transacao.valor|round(2) }}</span>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                        <tr class="total-row">
+                            <td>Total Despesas</td>
+                            {% for mes in meses %}
+                                <td><span class="valor-financeiro">{{ total_despesas[mes]|round(2) }}</span></td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="total-row">
+                            <td>Total Receitas</td>
+                            {% for mes in meses %}
+                                <td><span class="valor-financeiro">{{ total_receitas[mes]|round(2) }}</span></td>
+                            {% endfor %}
+                        </tr>
+                        <tr class="total-row">
+                            <td>Total Livre</td>
+                            {% for mes in meses %}
+                                <td class="{% if total_livre[mes] >= 0 %}positive{% else %}negative{% endif %}">
+                                    <span class="valor-financeiro">{{ total_livre[mes]|round(2) }}</span>
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuração do tema
+        document.addEventListener('DOMContentLoaded', function() {
+            const themeToggle = document.getElementById('themeToggle');
+            const themeIcon = themeToggle.querySelector('i');
+            
+            // Verificar tema salvo
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+            updateThemeIcon(savedTheme);
+
+            // Alternar tema
+            themeToggle.addEventListener('click', () => {
+                const currentTheme = document.documentElement.getAttribute('data-theme');
+                const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+                
+                document.documentElement.setAttribute('data-theme', newTheme);
+                localStorage.setItem('theme', newTheme);
+                updateThemeIcon(newTheme);
+                
+                // Atualizar tema dos gráficos
+                updateChartsTheme(newTheme);
+            });
+
+            function updateThemeIcon(theme) {
+                themeIcon.className = theme === 'light' ? 'fas fa-moon' : 'fas fa-sun';
+            }
+
+            // Atualizar tema dos gráficos
+            function updateChartsTheme(theme) {
+                const isDark = theme === 'dark';
+                const textColor = isDark ? '#ffffff' : '#333333';
+                const gridColor = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)';
+                
+                // Atualizar todos os gráficos
+                [fluxoCaixaChart, entradasSaidasChart, gastosCategoriaChart].forEach(chart => {
+                    if (chart) {
+                        chart.options.scales.x.ticks.color = textColor;
+                        chart.options.scales.y.ticks.color = textColor;
+                        chart.options.scales.x.grid.color = gridColor;
+                        chart.options.scales.y.grid.color = gridColor;
+                        chart.options.plugins.legend.labels.color = textColor;
+                        chart.update();
+                    }
+                });
+            }
+        });
+
+        // Tooltips personalizados
+        const tooltip = document.createElement('div');
+        tooltip.className = 'chart-tooltip';
+        document.body.appendChild(tooltip);
+
+        function showTooltip(event, text) {
+            tooltip.style.display = 'block';
+            tooltip.style.left = event.pageX + 10 + 'px';
+            tooltip.style.top = event.pageY + 10 + 'px';
+            tooltip.textContent = text;
+        }
+
+        function hideTooltip() {
+            tooltip.style.display = 'none';
+        }
+
+        // Função para formatar valores no padrão R$ 1.000,00
+        function formatarDinheiro(valor) {
+            let numero = parseFloat(valor).toFixed(2);
+            let partes = numero.split('.');
+            let parteInteira = partes[0];
+            let parteDecimal = partes[1];
+            parteInteira = parteInteira.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+            return `R$ ${parteInteira},${parteDecimal}`;
+        }
+
+        // Aplicar formatação aos valores financeiros
+        document.addEventListener('DOMContentLoaded', () => {
+            const valores = document.querySelectorAll('.valor-financeiro');
+            valores.forEach(elemento => {
+                const valorOriginal = elemento.textContent;
+                elemento.textContent = formatarDinheiro(valorOriginal);
+            });
+        });
+
+        // Gráfico de Fluxo de Caixa (Linha)
+        const ctx = document.getElementById('fluxoCaixaChart').getContext('2d');
+        const fluxoCaixaChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: {{ meses|tojson }},
+                datasets: [{
+                    label: 'Total Livre',
+                    data: {{ total_livre.values()|list|tojson }},
+                    borderColor: '#007bff',
+                    backgroundColor: 'rgba(0, 123, 255, 0.2)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#333' },
+                        grid: { color: 'rgba(0, 0, 0, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#333' },
+                        grid: { color: 'rgba(0, 0, 0, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#333' } }
+                }
+            }
+        });
+
+        // Gráfico de Entradas vs. Saídas (Barras)
+        const ctx2 = document.getElementById('entradasSaidasChart').getContext('2d');
+        const entradasSaidasChart = new Chart(ctx2, {
+            type: 'bar',
+            data: {
+                labels: {{ meses|tojson }},
+                datasets: [
+                    {
+                        label: 'Entradas',
+                        data: {{ total_receitas.values()|list|tojson }},
+                        backgroundColor: '#007bff',
+                    },
+                    {
+                        label: 'Saídas',
+                        data: {{ total_despesas.values()|list|tojson }},
+                        backgroundColor: '#dc3545',
+                    }
+                ]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: { color: '#333' },
+                        grid: { color: 'rgba(0, 0, 0, 0.1)' }
+                    },
+                    x: {
+                        ticks: { color: '#333' },
+                        grid: { color: 'rgba(0, 0, 0, 0.1)' }
+                    }
+                },
+                plugins: {
+                    legend: { labels: { color: '#333' } }
+                }
+            }
+        });
+
+        // Gráfico de Gastos por Categoria (Pizza)
+        const gastosPorCategoria = {};
+        {% for categoria in categorias %}
+            gastosPorCategoria['{{ categoria }}'] = {{ transacoes|selectattr('categoria', 'equalto', categoria)|selectattr('tipo', 'equalto', 'despesa')|map(attribute='valor')|sum|round(2) }};
+        {% endfor %}
+        const ctx3 = document.getElementById('gastosCategoriaChart').getContext('2d');
+        const gastosCategoriaChart = new Chart(ctx3, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(gastosPorCategoria),
+                datasets: [{
+                    label: 'Gastos por Categoria',
+                    data: Object.values(gastosPorCategoria),
+                    backgroundColor: [
+                        '#007bff', '#dc3545', '#ffc107', '#28a745', '#17a2b8',
+                        '#6c757d', '#6610f2', '#e83e8c', '#fd7e14', '#20c997'
+                    ],
+                }]
+            },
+            options: {
+                plugins: {
+                    legend: { labels: { color: '#333' } }
+                }
+            }
+        });
+
+        // Menu mobile
+        const menuToggle = document.getElementById('menuToggle');
+        const mainNav = document.getElementById('mainNav');
+        const menuOverlay = document.getElementById('menuOverlay');
+
+        menuToggle.addEventListener('click', () => {
+            mainNav.classList.toggle('active');
+            menuOverlay.classList.toggle('active');
+        });
+
+        menuOverlay.addEventListener('click', () => {
+            mainNav.classList.remove('active');
+            menuOverlay.classList.remove('active');
+        });
+
+        // Fechar menu ao clicar em um link
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                mainNav.classList.remove('active');
+                menuOverlay.classList.remove('active');
+            });
+        });
+    </script>
+    <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'931d66db48494d9a',t:'MTc0NDkwODQyMC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script>
+</body>
+</html>
