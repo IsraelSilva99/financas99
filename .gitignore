@@ -41,6 +41,8 @@ config/database.php
 # Banco de dados
 *.sqlite
 *.db
+*.sql
+!financas99.sql
 
 # Outros
 .DS_Store
